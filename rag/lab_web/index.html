@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#F9F9F8">
+    <meta name="description" content="Inspect each stage of a local RAG policy ingestion.">
+    <title>Ingestion Lab · Cimulink</title>
+    <script>
+      try {
+        const savedTheme = localStorage.getItem("cimulink-theme");
+        if (savedTheme === "dark" || savedTheme === "light") {
+          document.documentElement.dataset.theme = savedTheme;
+          document.querySelector('meta[name="theme-color"]')?.setAttribute("content", savedTheme === "dark" ? "#11161A" : "#F9F9F8");
+        }
+      } catch {}
+    </script>
+    <link rel="icon" href="/static/cimulink-symbol.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/lab.css">
+    <script src="/static/lab.js" defer></script>
+  </head>
+  <body>
+    <button class="theme-toggle" type="button" aria-label="Switch to dark mode" aria-pressed="false" title="Dark mode">
+      <svg class="theme-icon-moon" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+        <path d="M20.1 15.8A8.5 8.5 0 0 1 8.2 3.9 8.5 8.5 0 1 0 20.1 15.8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+      </svg>
+      <svg class="theme-icon-sun" aria-hidden="true" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="3.7" stroke="currentColor" stroke-width="1.6" />
+        <path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      </svg>
+    </button>
+    <header class="masthead">
+      <a class="brand" href="/" aria-label="Cimulink Ingestion Lab home">
+        <img src="/static/cimulink-wordmark.svg" alt="Cimulink">
+        <span class="brand-divider" aria-hidden="true"></span>
+        <span class="brand-product">INGESTION LAB</span>
+      </a>
+      <div class="local-indicator"><span class="local-dot"></span> LOCAL SYSTEM <span class="local-separator">/</span> POSTGRES <code>55433</code></div>
+    </header>
+
+    <main class="page-shell">
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+      <div class="lab-layout">
+        <aside class="side-rail" aria-label="Sources and saved runs">
+          <section class="rail-section">
+            <div class="rail-heading"><h2>Current sources</h2><span id="source-count" class="rail-count">—</span></div>
+            <div id="source-list" class="source-list"><p class="quiet-copy">Loading sources…</p></div>
+            <p id="source-note" class="source-note">Select a source to begin.</p>
+            <div class="source-run-actions">
+              <button id="live-button" class="button button-quiet" type="button" disabled>Run live <span aria-hidden="true">↗</span></button>
+              <button id="step-button" class="button button-primary" type="button" disabled>Step through <span aria-hidden="true">→</span></button>
+            </div>
+          </section>
+          <section class="rail-section history-section">
+            <div class="rail-heading"><h2>Lab run history</h2><button id="refresh-history" class="text-button" type="button" aria-label="Refresh run history">↻</button></div>
+            <p class="history-note">Only Live and Step runs appear here. CLI jobs do not save the detailed replay data.</p>
+            <div id="job-list" class="job-list"><p class="quiet-copy">No saved lab runs yet.</p></div>
+          </section>
+          <div class="rail-footnote"><span class="footnote-rule"></span><p>Source files stay in <code>data/policies/</code>. Each run records what the pipeline produced.</p></div>
+        </aside>
+
+        <section class="workbench" aria-label="Ingestion run detail">
+          <div class="workbench-topline">
+            <div class="run-heading">
+              <span class="section-kicker">INGESTION RUN</span>
+              <h2 id="run-title">Choose a source to begin</h2>
+              <p id="run-subtitle">The stage trail and its real outputs will appear here.</p>
+            </div>
+            <div id="run-status" class="status-stamp status-idle"><span class="status-dot"></span><span>READY WHEN YOU ARE</span></div>
+          </div>
+
+          <div id="run-controls" class="run-control-row" hidden>
+            <div class="run-id-block"><span>JOB ID</span><code id="run-job-id">Waiting for source validation</code></div>
+            <div class="control-buttons">
+              <button id="exit-replay" class="button button-small button-quiet" type="button" hidden>Choose a source</button>
+              <button id="return-current" class="button button-small button-quiet" type="button" hidden>Return to current</button>
+              <button id="previous-event" class="button button-small button-quiet" type="button" hidden>← Previous</button>
+              <button id="next-event" class="button button-small button-quiet" type="button" hidden>Next →</button>
+              <button id="continue-button" class="button button-small button-primary" type="button" hidden>Continue <span aria-hidden="true">→</span></button>
+              <button id="stop-button" class="button button-small button-stop" type="button" hidden>Stop run</button>
+            </div>
+          </div>
+
+          <div id="stage-timeline" class="stage-timeline" aria-label="Ingestion events">
+            <div class="timeline-empty"><span class="empty-rule"></span><span>EVENT TRAIL</span><span class="empty-rule"></span></div>
+          </div>
+
+          <article id="stage-detail" class="stage-detail">
+            <div class="empty-state">
+              <div class="empty-diagram" aria-hidden="true">
+                <div class="empty-file">.md</div><span class="empty-arrow">→</span><div class="empty-passage">TEXT</div><span class="empty-arrow">→</span><div class="empty-vector">384</div>
+              </div>
+              <p class="section-kicker">FROM SOURCE TO SEARCH</p>
+              <h3>One policy. Every step in view.</h3>
+              <p>Start a new policy version to see its actual validation, passage split, embedding values, and activation record.</p>
+            </div>
+          </article>
+        </section>
+      </div>
+
+      <footer class="page-footer">
+        <span>RAG INGESTION LAB <span class="footer-divider">/</span> LOCAL DEMONSTRATION</span>
+        <span>01 <span class="footer-divider">—</span> SOURCE TO INDEX</span>
+      </footer>
+    </main>
+  </body>
+</html>
