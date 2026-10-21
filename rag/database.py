@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import os
+from functools import partial
 from pathlib import Path
 
 import psycopg
 from dotenv import load_dotenv
 from psycopg.conninfo import conninfo_to_dict
+from psycopg.types.json import set_json_loads
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +18,10 @@ DATA_DIRECTORY = PROJECT_ROOT / ".local" / "postgres-data"
 MIGRATIONS_DIR = PROJECT_ROOT / "migrations"
 EXPECTED_DATABASE = "rag_document_update"
 EXPECTED_PORT = 55433
+
+
+def _load_json(data: bytes, *, encoding: str):
+    return json.loads(data.decode(encoding))
 
 
 class DatabaseConfigurationError(RuntimeError):
@@ -52,8 +59,9 @@ def connect_project_database() -> psycopg.Connection:
         _database_url(), connect_timeout=4, application_name="rag-document-update"
     )
     try:
-        database, port, data_dir = conn.execute(
-            "SELECT current_database(), inet_server_port(), current_setting('data_directory')"
+        database, port, data_dir, server_encoding = conn.execute(
+            "SELECT current_database(), inet_server_port(), current_setting('data_directory'), "
+            "current_setting('server_encoding')"
         ).fetchone()
         expected_dir = os.path.normcase(os.path.realpath(DATA_DIRECTORY))
         actual_dir = os.path.normcase(os.path.realpath(data_dir))
@@ -65,6 +73,17 @@ def connect_project_database() -> psycopg.Connection:
             raise DatabaseConfigurationError(
                 "Connected PostgreSQL identity does not match the isolated project target."
             )
+        # PostgreSQL's binary JSONB protocol returns bytes in the server
+        # encoding. psycopg's default JSON loader assumes those bytes are
+        # UTF-8, which breaks when a local Windows cluster uses WIN1252.
+        json_codec = {
+            "UTF8": "utf-8",
+            "WIN1252": "cp1252",
+        }.get(server_encoding, server_encoding.lower())
+        set_json_loads(
+            partial(_load_json, encoding=json_codec),
+            conn,
+        )
         conn.rollback()
         return conn
     except Exception:

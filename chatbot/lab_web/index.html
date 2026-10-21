@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#F9F9F8">
+    <title>Chat Lab · Cimulink</title>
+    <script>
+      try {
+        const savedTheme = localStorage.getItem("cimulink-theme");
+        if (savedTheme === "dark" || savedTheme === "light") document.documentElement.dataset.theme = savedTheme;
+      } catch {}
+    </script>
+    <link rel="icon" href="/static/cimulink-symbol.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/chat.css">
+    <script src="/static/chat.js" defer></script>
+  </head>
+  <body>
+    <button class="theme-toggle" type="button" aria-label="Switch to dark mode" aria-pressed="false" title="Dark mode">◐</button>
+    <header class="masthead">
+      <a class="brand" href="/" aria-label="Cimulink Chat Lab home">
+        <img src="/static/cimulink-wordmark.svg" alt="Cimulink">
+        <span class="brand-divider" aria-hidden="true"></span>
+        <span class="brand-product">CHAT LAB</span>
+      </a>
+      <div class="local-indicator"><a href="/static/cache-lab.html">PROMPT CACHE EXPERIMENT ↗</a><span class="local-dot"></span> LOCAL SYSTEM <span>/</span> CHAT REPLAY</div>
+    </header>
+
+    <main class="page-shell">
+      <section class="intro-line">
+        <div><span class="section-kicker">VISIBLE AGENT WORKFLOW</span><h1>One conversation, every step.</h1></div>
+        <p>Follow the actual prompt, each search, and the final answer. Private model reasoning is not recorded.</p>
+      </section>
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+      <div class="chat-layout">
+        <aside class="side-rail" aria-label="Chat controls and past runs">
+          <section class="rail-section">
+            <div class="rail-heading"><h2>Start a chat</h2></div>
+            <label for="agent-select">Agent</label>
+            <select id="agent-select">
+              <option value="phase_one_chatbot">Policy assistant</option>
+              <option value="baseline_chatbot">Baseline assistant</option>
+            </select>
+            <button id="new-session" class="button button-primary" type="button">New session <span aria-hidden="true">→</span></button>
+            <p id="session-note" class="rail-note">Start a local ADK session. Saved runs can be replayed after the server restarts.</p>
+          </section>
+          <section class="rail-section history-section">
+            <div class="rail-heading"><h2>Past runs</h2><button id="refresh-runs" class="text-button" type="button" aria-label="Refresh past runs">↻</button></div>
+            <div id="run-list" class="run-list"><p class="quiet-copy">Loading saved runs…</p></div>
+          </section>
+          <p class="rail-footnote">Live ADK sessions stay in memory. PostgreSQL stores the event trail for replay.</p>
+        </aside>
+
+        <section class="chat-workbench" aria-label="Chat run">
+          <div class="workbench-topline">
+            <div><span class="section-kicker">CURRENT RUN</span><h2 id="run-title">Start a new session</h2><p id="run-subtitle">Each event is saved as the run happens.</p></div>
+            <span id="run-status" class="status-stamp status-idle">READY</span>
+          </div>
+          <form id="message-form" class="message-form">
+            <label for="question">Your question</label>
+            <textarea id="question" rows="2" maxlength="1000" required placeholder="How long can a customer return a device?" disabled></textarea>
+            <button class="button button-primary" type="submit" disabled>Send question <span aria-hidden="true">→</span></button>
+          </form>
+          <p id="chat-status" class="chat-status" role="status" aria-live="polite">Start a session to ask a question.</p>
+
+          <div class="runline-heading"><span class="section-kicker">EVENT LINE</span><span id="event-count" class="event-count">No events yet</span></div>
+          <div id="event-line" class="event-line" aria-label="Recorded run events">
+            <p class="quiet-copy">Events will appear here as the agent works.</p>
+          </div>
+
+          <section id="event-detail" class="event-detail" aria-live="polite">
+            <div class="empty-detail"><span class="section-kicker">INPUT → OUTPUT</span><h3>Select a recorded step</h3><p>Choose an event on the line to inspect its input and output.</p></div>
+          </section>
+          <div id="trace-link" class="trace-link" hidden></div>
+        </section>
+      </div>
+      <footer class="page-footer"><span>CIMULINK CHAT LAB <span>/</span> LOCAL REPLAY</span><span>MODEL · TOOL · ANSWER</span></footer>
+    </main>
+  </body>
+</html>

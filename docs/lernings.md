@@ -1,0 +1,7 @@
+- during the ingestion or update of an policy or document... we may have a lot of conflicting information as well.. so during ingestion that must be checked. 
+- when we are creating chunking, we need to have right chunk size and overlap.. right size because the chunk results are directly sent into the model context window.. and right overlap so that.. the meaning/context is not lost between two different chunks.. the connection needs to be kept to make wholistic sense of things there. 
+- when ingestion has happened and now during retieval.. we will mostly use cosign similarity to fetch data... but the issue is 14 day return and 21 day return... both types of chunks will return same cosign similarity. 
+- reranker is used (like BERT or Jev) to actually use those selected cosign similar embeddings to rerank in correct manner, based on trained examples on past. 
+- compaction... during compaction.. once the decision to movefoward andd oing something has been made.. we can just store the conclusion of that part.. instead of keeping the whole storage for the whole time.. right, like for tool call and doing stuff.. there would be a lot of rubbish we would have done.. we can keep that persisted in our history so it's not lost, but to save context, we can just keep a very summarized way in context.. whihci s relevant for our conversaiont.. right?
+
+Design note: [Context and caching experiment](./context-and-caching/DESIGN.md).

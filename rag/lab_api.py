@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from rag.database import connect_project_database
 from rag.documents import DocumentValidationError, POLICY_DIR, load_policy
 from rag.lab_controller import LabRunError, controller
+from rag.search import retrieve_detailed
 
 
 WEB_DIR = Path(__file__).resolve().parent / "lab_web"
@@ -27,6 +28,11 @@ class StartRunRequest(BaseModel):
 
 class ContinueRunRequest(BaseModel):
     expected_sequence: int = Field(ge=1)
+
+
+class SearchQuestionRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=1000)
+    top_k: int = Field(default=5, ge=1, le=5)
 
 
 @asynccontextmanager
@@ -99,6 +105,17 @@ def list_sources() -> dict:
                 }
             )
     return {"sources": sources}
+
+
+@app.post("/api/search")
+def search_question(request: SearchQuestionRequest) -> dict:
+    """Search the current active corpus through the shared agent retrieval path."""
+    try:
+        return retrieve_detailed(request.question, request.top_k)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
 
 
 @app.post("/api/runs", status_code=202)

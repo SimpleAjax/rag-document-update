@@ -41,6 +41,41 @@
     <main class="page-shell">
       <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
 
+      <section class="search-lab" aria-labelledby="search-title">
+        <div class="search-head">
+          <div>
+            <span class="section-kicker">CURRENT SEARCH · QUERY TIME</span>
+            <h2 id="search-title">Try a question</h2>
+            <p>Search the active, ready policy versions. This is a fresh search, including while an older ingestion run is open.</p>
+          </div>
+          <form id="search-form" class="search-form">
+            <label for="search-question">Policy question</label>
+            <textarea id="search-question" rows="2" maxlength="1000" required placeholder="How long can a customer return a device?"></textarea>
+            <button class="button button-primary" type="submit">Search current corpus <span aria-hidden="true">→</span></button>
+          </form>
+        </div>
+        <p id="search-status" class="search-status" role="status" aria-live="polite">No question searched yet.</p>
+        <div id="search-results" class="search-results" hidden>
+          <div class="search-version-line"><span>ACTIVE VERSIONS SEARCHED</span><strong id="search-versions"></strong><span class="search-current-label">CURRENT ACTIVE CORPUS</span></div>
+          <div class="search-stages">
+            <section class="search-stage" aria-labelledby="cosine-title">
+              <div class="search-stage-heading"><span class="section-kicker">01 · COSINE SHORTLIST</span><h3 id="cosine-title">Quick search</h3><p>Broad vector similarity. Candidates are ordered before reranking.</p></div>
+              <div id="cosine-list" class="rank-list"></div>
+            </section>
+
+            <section class="search-stage" aria-labelledby="rerank-title">
+              <div class="search-stage-heading"><span class="section-kicker">02 · LOCAL RERANK</span><h3 id="rerank-title">Question and passage together</h3><p>Different score scale. Rerank scores are for ordering this question's candidates.</p></div>
+              <div id="rerank-list" class="rank-list"></div>
+            </section>
+          </div>
+          <div class="search-selected">
+            <div class="search-selected-heading"><div><span class="section-kicker">RETURNED TO THE AGENT</span><h3>Selected passages</h3><p>Open a passage or choose its rank to inspect the full text.</p></div><div id="search-text-size" class="search-text-size"></div></div>
+            <div id="selected-passages" class="selected-passages"></div>
+          </div>
+          <p id="search-source-note" class="search-source-note"></p>
+        </div>
+      </section>
+
       <div class="lab-layout">
         <aside class="side-rail" aria-label="Sources and saved runs">
           <section class="rail-section">
@@ -98,6 +133,8 @@
           </article>
         </section>
       </div>
+
+
 
       <footer class="page-footer">
         <span>RAG INGESTION LAB <span class="footer-divider">/</span> LOCAL DEMONSTRATION</span>

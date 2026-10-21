@@ -65,7 +65,7 @@ unchanged version is idempotent. Changed content under the same version is
 rejected; add a new Markdown file with the next version number to update the
 policy. A new version becomes active only after its passages are ready.
 
-To run the prepared current corpus, `RETURNS v2` is active:
+The prepared local corpus has `RETURNS v3` and `SHIPPING v2` active:
 
 ```powershell
 uv run python -m chatbot.status
@@ -73,16 +73,68 @@ uv run adk web --session_service_uri memory:// --artifact_service_uri memory:// 
 ```
 
 Open <http://127.0.0.1:8000> and ask “How long can a customer return a
-device?” The current answer should be **14 days**, with a citation such as
-`[RETURNS v2, RETURNS-v2-p1]`. The ADK event trace shows the
+device?” The current answer should be **21 days**, with a citation such as
+`[RETURNS v3, RETURNS-v3-p1]`. The ADK event trace shows the
 `search_documents` call and the passage returned to the agent. Ask about a
-warranty period; the only ingested policy does not support an answer, so the
-agent should abstain.
+warranty period; the ingested policy set has no warranty policy, so this
+policy chatbot should abstain.
 
 If port 8000 is already in use by an older ADK server, stop that server with
 `Ctrl+C` in its original terminal, then start the command above again so it
 loads the current Phase 2 code. You can use port 8001 instead by changing both
 `--port 8000` and the URL to `http://127.0.0.1:8001`.
+
+## Baseline chat agent
+
+The baseline agent is a separate chat for observing how Codex chooses to use
+the read-only policy search tool. It has no application policy instruction.
+It can choose not to search, search more than once, or answer. The ADK trace
+shows the user message, tool calls and arguments, results, and final answer.
+It does not show private model reasoning. The bridge stops a turn if the agent
+requests more than 24 tool calls.
+
+Start it from this project directory in PowerShell:
+
+```powershell
+uv sync --frozen
+./scripts/postgres-start.ps1
+uv run adk web --session_service_uri memory:// --artifact_service_uri memory:// baseline_chatbot --host 127.0.0.1 --port 8001 --no-reload
+```
+
+Open <http://127.0.0.1:8001> and select `baseline_chatbot`. Type the question
+and any test directions you want the agent to try. Inspect the ADK event trace
+to see if it searches, which query it sends, what the tool returns, and what
+it says next. Search can return passages only from active, ready policy
+versions. It cannot read local files or change policy data. The prompt
+injection behavior has not been evaluated by the implementation smoke check.
+
+### Langfuse traces
+
+This project can send Google ADK model calls and tool calls to Langfuse. To
+enable it, append your project values to the ignored `.env` file. Do not replace
+the existing `RAG_DATABASE_URL` line:
+
+```dotenv
+LANGFUSE_PUBLIC_KEY=pk-lf-your-project-key
+LANGFUSE_SECRET_KEY=sk-lf-your-project-secret
+LANGFUSE_BASE_URL=https://cloud.langfuse.com
+```
+
+Use the base URL shown for your Langfuse project or deployment. Restart the
+ADK server after adding the values. When all three are present, tracing starts
+with the chat agent. When all three are empty or absent, the chat runs without
+Langfuse. A partial configuration stops startup with a message naming the
+missing setting.
+
+Langfuse receives model request/response content and search tool inputs/results.
+This includes the user's question and any retrieved policy passages. Use this
+only with content you are comfortable sending to the configured Langfuse host.
+The model still runs through the signed-in Codex CLI; Langfuse credentials do
+not authenticate or power the model.
+
+Press `Ctrl+C` in the chat terminal to stop the server. Stop the isolated
+database with `./scripts/postgres-stop.ps1` when finished. Keep this server on
+`127.0.0.1`; the local ADK development UI has no user authentication.
 
 If the ADK CLI asks about telemetry on first run, keep the default off. The web
 server uses in-memory sessions and artifacts; conversation history is lost
@@ -145,9 +197,11 @@ lab is a local teaching tool, not a production security boundary.
 - The adapter supports text-only messages and one JSON-structured ADK function
   call at a time. It does not support streaming, images, or arbitrary Codex
   tool routing.
-- Search reads only ready passages from the active version. It returns at most
-  five passages and uses a fixture-calibrated cosine threshold; re-evaluate the
-  threshold as the corpus grows.
+- Search reads ready passages from each active document version. It uses cosine
+  similarity to shortlist at most 20 passages, then reranks them with local
+  `ms-marco-MiniLM-L-12-v2` and returns up to five. A fixture-calibrated rerank
+  floor of `0.001` provides a no-evidence path; it is an ordering heuristic, not
+  a probability. Re-evaluate it as the corpus grows.
 - Only the fictional returns policy is loaded. The current phase has no role
   access control, user authentication, prompt-injection experiment, ingestion
   worker, retry queue, or production deployment.
@@ -172,3 +226,100 @@ lab is a local teaching tool, not a production security boundary.
 
 Phase 2 is a local learning demo. It does not establish production security,
 role-based access, or general prompt-injection resistance.
+
+## Retrieval and chat lab
+
+The retrieval lab adds a read-only question panel to the ingestion lab. It
+shows the active corpus, cosine shortlist, reranked order, selected passages,
+and the text size returned to the agent. A pending or inactive source selection
+does not change which corpus a question searches.
+
+The chat lab runs the existing phase-one or baseline ADK agent through the
+signed-in Codex CLI. It records a bounded, redacted event trail in PostgreSQL
+and lets you replay completed or interrupted runs after a server restart. ADK
+session state stays in memory and does not survive restart; replay does not
+resume a conversation. Exact constructed prompts and retrieved passage text
+are saved locally and visible in expanded event details. They can contain the
+question and policy content, so use only test material you are comfortable
+storing in this local database. Langfuse remains optional and may receive model
+inputs and search results when configured.
+
+Start the isolated database once, then apply migrations. Run each lab in its
+own terminal from the project directory:
+
+```powershell
+./scripts/postgres-start.ps1
+uv run python -m rag.cli migrate
+uv run uvicorn rag.lab_api:app --host 127.0.0.1 --port 8002 --workers 1
+```
+
+Open <http://127.0.0.1:8002> for ingestion and retrieval. Start the chat lab in
+a second terminal:
+
+```powershell
+uv run uvicorn chatbot.lab_api:app --host 127.0.0.1 --port 8003 --workers 1
+```
+
+Open <http://127.0.0.1:8003>. This page uses the same local ADK agents and does
+not require a separate `adk web` server. Codex CLI must be installed and
+signed in. The first retrieval may download the approximately 21.6 MB
+FlashRank model archive into ignored `.local/flashrank/`; the embedding model
+is also cached locally. Keep both services bound to loopback. Press `Ctrl+C`
+in each server terminal to stop it, then run `./scripts/postgres-stop.ps1`
+when finished.
+
+Try these comparison questions in the retrieval panel:
+
+1. “How many calendar days after delivery can a customer request a return?”
+2. “Can the customer return an opened or damaged device, and what happens if the delivery arrived damaged?”
+3. “Which items are excluded from the standard return window?”
+4. “Where is the office parking garage?”
+
+The first three have active RETURNS evidence. The last is unrelated and should
+return no selected passages, though the lab retains its candidate trail. A
+multi-part question can need several low-scoring passages; inspect recall and
+precision together instead of reading a rerank score as confidence.
+
+### Chat event and trace scope
+
+The event replay stores user messages, actual constructed model prompts,
+available tool names, model actions, ADK function calls and results, detailed
+search candidates, final answers, durations where measured, and safe errors.
+It does not store private model reasoning or Codex CLI arguments and stderr.
+The local event store redacts common credential forms and bounds each JSON
+field. Langfuse tracing remains a separate view. Its configured credentials
+were verified without displaying them; the local chat session was cross-checked
+against Langfuse observations by session ID. A trace link appears only when an
+event has a real trace ID.
+
+Validated locally on 2026-10-19: the real Codex-backed returns question
+returned 21 calendar days with a `[RETURNS v3, RETURNS-v3-p1]` citation and a
+five-passage search event. A real no-tool question returned `4`. After
+restarting the chat server, the saved nine-event run replayed while its live
+ADK session reported unavailable. The v2 Langfuse Observations API confirmed
+the matching session, two model calls, the search tool, and one shared trace
+ID. The installed Langfuse SDK's legacy trace-list endpoint returned the
+provider's migration response; verification used the supported v2 endpoint.
+
+## Prompt cache and compaction lab
+
+The prompt cache lab is attached to the chat lab server on port `8003`. Start
+it from this project directory in PowerShell:
+
+```powershell
+uv run uvicorn chatbot.lab_api:app --host 127.0.0.1 --port 8003 --workers 1
+```
+
+Open <http://127.0.0.1:8003/static/cache-lab.html> for the scripted experiment
+or <http://127.0.0.1:8003/static/cache-explainer.html> for the offline visual
+explainer. To enable paid API runs, add `OPENAI_API_KEY` to this project's
+ignored `.env` file. Never paste or commit the key. Preflight shows the current
+maximum estimate; the lab caps each paid run at `$0.25`. The four modes are
+four separately started runs, so running all four could cost up to `$1.00` if
+each reaches its cap. Starting a run makes paid provider calls only after you
+review preflight and explicitly select **Start paid run**. Without the key,
+the UI remains available for inspection, but paid runs are blocked.
+
+The explainer makes no model calls. It starts with illustrative fixture data;
+you can import JSON exports from local runs for measured comparisons. Press
+`Ctrl+C` in the server terminal to stop the lab.

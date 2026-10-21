@@ -1,5 +1,9 @@
 from pathlib import Path
 
+from chatbot.tracing import initialize_langfuse
+
+initialize_langfuse()
+
 from google.adk.agents import LlmAgent
 from chatbot.codex_model import CodexCliModel
 from rag.search import search_documents

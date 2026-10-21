@@ -22,6 +22,16 @@ const ui = {
   nextEvent: $("#next-event"),
   timeline: $("#stage-timeline"),
   detail: $("#stage-detail"),
+  searchForm: $("#search-form"),
+  searchQuestion: $("#search-question"),
+  searchStatus: $("#search-status"),
+  searchResults: $("#search-results"),
+  searchVersions: $("#search-versions"),
+  cosineList: $("#cosine-list"),
+  rerankList: $("#rerank-list"),
+  selectedPassages: $("#selected-passages"),
+  searchTextSize: $("#search-text-size"),
+  searchSourceNote: $("#search-source-note"),
 };
 
 const terminalRunStates = new Set(["READY", "FAILED", "ALREADY_READY"]);
@@ -48,6 +58,7 @@ let followLatest = true;
 let replayMode = false;
 let pollHandle = null;
 let pollBusy = false;
+let latestSearch = null;
 
 function syncThemeToggle() {
   const dark = document.documentElement.dataset.theme === "dark";
@@ -103,6 +114,100 @@ function formatDuration(value) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "—";
   if (value < 1000) return `${Math.round(value)} ms`;
   return `${(value / 1000).toFixed(2)} s`;
+}
+
+function renderSearchRankList(items, stage) {
+  const list = stage === "cosine" ? ui.cosineList : ui.rerankList;
+  list.replaceChildren();
+  if (!items.length) {
+    list.append(node("p", "quiet-copy", "No active ready passages were available to rank."));
+    return;
+  }
+  for (const item of items) {
+    const row = node("button", "rank-row");
+    row.type = "button";
+    row.setAttribute("aria-label", `${item.passage_id}, cosine rank ${item.cosine_rank}, rerank rank ${item.rerank_rank}`);
+    row.addEventListener("click", () => {
+      const passage = ui.selectedPassages.querySelector(`[data-passage="${CSS.escape(item.passage_id)}"]`);
+      if (passage) {
+        passage.open = true;
+        passage.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+    });
+    const rank = node("span", "rank-number", stage === "cosine" ? item.cosine_rank : item.rerank_rank);
+    const content = node("span", "rank-content");
+    content.append(node("strong", "rank-id", item.passage_id));
+    content.append(node("span", "rank-excerpt", item.text.slice(0, 180) + (item.text.length > 180 ? "…" : "")));
+    const metrics = node("span", "rank-metrics");
+    metrics.append(node("span", "rank-score", stage === "cosine" ? `cosine ${item.cosine_score.toFixed(4)}` : `rerank ${item.rerank_score.toFixed(6)}`));
+    metrics.append(node("span", "rank-shift", `${item.cosine_rank} → ${item.rerank_rank}`));
+    row.append(rank, content, metrics);
+    list.append(row);
+  }
+}
+
+function renderSearchResult(result) {
+  latestSearch = result;
+  ui.searchResults.hidden = false;
+  const selectedSourceValue = selectedSource();
+  ui.searchVersions.textContent = result.active_versions.length
+    ? result.active_versions.map((item) => `${item.document_id} v${item.version}`).join(" · ")
+    : "No active versions";
+  ui.searchStatus.textContent = `${result.message} Searched the current active corpus for: “${result.query}”`;
+  const rerankedById = new Map(result.reranked_candidates.map((item) => [item.passage_id, item]));
+  const cosineWithRerank = result.cosine_candidates.map((item) => ({ ...item, rerank_rank: rerankedById.get(item.passage_id)?.rerank_rank }));
+  renderSearchRankList(cosineWithRerank, "cosine");
+  renderSearchRankList(result.reranked_candidates, "rerank");
+  ui.selectedPassages.replaceChildren();
+  const totalCharacters = result.results.reduce((total, item) => total + item.text.length, 0);
+  ui.searchTextSize.textContent = `${result.results.length} passage${result.results.length === 1 ? "" : "s"} · ${totalCharacters.toLocaleString()} passage-text characters · ${result.tool_result_characters.toLocaleString()} tool JSON characters`;
+  if (!result.results.length) {
+    ui.selectedPassages.append(node("p", "quiet-copy", "No passage cleared the local rerank selection floor. The candidate trail above remains available for inspection."));
+  }
+  for (const item of result.results) {
+    const article = node("details", "selected-passage");
+    article.dataset.passage = item.passage_id;
+    const summary = node("summary", "selected-passage-summary");
+    const heading = node("div", "selected-passage-heading");
+    heading.append(node("strong", "rank-id", item.passage_id));
+    heading.append(node("span", "selected-source", `${item.document_id} v${item.version}`));
+    const detail = result.reranked_candidates.find((candidate) => candidate.passage_id === item.passage_id);
+    if (detail) heading.append(node("span", "selected-ranks", `cosine #${detail.cosine_rank} → rerank #${detail.rerank_rank}`));
+    summary.append(heading, node("span", "selected-passage-action", "Show full passage"));
+    article.append(summary, node("p", "selected-passage-text", item.text));
+    ui.selectedPassages.append(article);
+  }
+  if (selectedSourceValue && (!selectedSourceValue.active || selectedSourceValue.database_status !== "READY")) {
+    ui.searchSourceNote.textContent = `Pending source: ${selectedSourceValue.source_path} is not active. This question searched the current active corpus shown above.`;
+  } else if (selectedSourceValue) {
+    ui.searchSourceNote.textContent = `The selected source ${selectedSourceValue.source_path} is active only if listed in the versions above; the question always searches current active versions.`;
+  } else {
+    ui.searchSourceNote.textContent = "A source selected for ingestion does not change this search. Only active, ready versions appear above.";
+  }
+}
+
+async function submitSearch(event) {
+  event.preventDefault();
+  const question = ui.searchQuestion.value.trim();
+  if (!question) {
+    ui.searchStatus.textContent = "Enter a policy question before searching.";
+    ui.searchQuestion.focus();
+    return;
+  }
+  ui.searchStatus.textContent = "Searching the current active corpus…";
+  ui.searchResults.hidden = true;
+  const button = ui.searchForm.querySelector("button[type=submit]");
+  button.disabled = true;
+  try {
+    renderSearchResult(await requestJSON("/api/search", {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    }));
+  } catch (error) {
+    ui.searchStatus.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function activeRunExists() {
@@ -898,6 +1003,7 @@ ui.returnCurrent.addEventListener("click", returnToCurrent);
 ui.previousEvent.addEventListener("click", () => selectRelativeEvent(-1));
 ui.nextEvent.addEventListener("click", () => selectRelativeEvent(1));
 $("#refresh-history").addEventListener("click", refreshJobs);
+ui.searchForm.addEventListener("submit", submitSearch);
 
 async function boot() {
   syncThemeToggle();
